@@ -2,6 +2,24 @@ import asyncio
 import time
 import ccxt.pro as ccxt
 import importlib
+import sys
+
+# Redirigir todos los prints a un archivo de log sin perder la consola
+class Logger(object):
+    def __init__(self, filename="bot_hft.log"):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a", encoding="utf-8")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)  
+        self.log.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+sys.stdout = Logger()
 
 radar = importlib.import_module("1_radar_volatilidad")
 escudo = importlib.import_module("2_escudo_semantico")
