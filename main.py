@@ -32,19 +32,21 @@ async def orquestador_principal():
                 server_time = await exchange.fetch_time()
                 local_time = int(time.time() * 1000)
                 latencia = abs(server_time - local_time)
-                if latencia > 300:
-                    print(f"⚠️ [CIRCUIT BREAKER] Latencia de red extrema ({latencia}ms). Pausando motor...")
+                if latencia > 2000:
+                    print(f"[CIRCUIT BREAKER] Latencia de red INACEPTABLE ({latencia}ms). Pausando motor...")
                     await asyncio.sleep(5)
                     continue
+                elif latencia > 300:
+                    print(f"[WARNING] Latencia alta ({latencia}ms). El motor sigue rodando pero hay riesgo de desfase.")
             except Exception as e:
-                print(f"⚠️ Error obteniendo hora del servidor: {e}")
+                print(f"Error obteniendo hora del servidor: {e}")
                 await asyncio.sleep(5)
                 continue
 
             # 3. GUARDIÁN DE CAOS SISTÉMICO (Enfriamiento por caída de BTC)
             if ahora < bloqueo_hasta:
                 restante = int((bloqueo_hasta - ahora) / 60)
-                print(f"🛑 [SISTEMA BLOQUEADO] Cisne Negro detectado. Enfriamiento activo: {restante} min restantes.")
+                print(f"[SISTEMA BLOQUEADO] Cisne Negro detectado. Enfriamiento activo: {restante} min restantes.")
                 await asyncio.sleep(60) # Chequeamos cada minuto si ya pasó el castigo
                 continue
 
@@ -66,8 +68,8 @@ async def orquestador_principal():
                 if symbol:
                     # Validar Caos Sistémico (Si cae el Rey, caen todos)
                     if symbol == btc_symbol and z_score <= -4.0:
-                        print(f"🚨🚨 [CIRCUIT BREAKER GLOBAL] ¡BTC COLAPSÓ! Z-Score: {z_score:.2f}")
-                        print("🚨🚨 Bloqueo de compras activado por 30 minutos.")
+                        print(f"[CIRCUIT BREAKER GLOBAL] ¡BTC COLAPSÓ! Z-Score: {z_score:.2f}")
+                        print("Bloqueo de compras activado por 30 minutos.")
                         bloqueo_hasta = time.time() + (30 * 60)
                         break # Ignoramos cualquier otra altcoin en esta ronda
                     
