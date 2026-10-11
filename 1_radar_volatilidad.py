@@ -1,14 +1,16 @@
 import asyncio
 import collections
 import math
-import ccxt.async_support as ccxt
+import ccxt.pro as ccxt
 import config_parametros as cfg
+import importlib
 
 # Estado Global en Memoria para cálculos incrementales (Destruyendo a Pandas)
 # Estructura: { "SYMBOL": {"precios": deque, "ema": float} }
 estado_memoria = {}
 
 async def obtener_presas(exchange):
+    # Usamos REST inicialmente solo para buscar volumen
     tickers = await exchange.fetch_tickers()
     presas = []
     for s, t in tickers.items():
@@ -51,38 +53,39 @@ def calcular_z_score_incremental(symbol, precio_actual):
     z_score = (precio_actual - estado["ema"]) / std
     return z_score
 
-async def cazar_anomalia(exchange, symbol):
-    try:
-        # Petición ultra ligera: Solo traemos la ÚLTIMA vela en lugar de 100
-        # Esto reduce el payload JSON y acelera la red
-        ohlcv = await exchange.fetch_ohlcv(symbol, cfg.TIMEFRAME, limit=1)
-        if not ohlcv:
-            return None, None
-            
-        precio_cierre = ohlcv[0][4] # Índice 4 es el precio de cierre ('close')
-        
-        # Matemáticas Vectorizadas en Microsegundos (O(1))
-        z_actual = calcular_z_score_incremental(symbol, precio_cierre)
-        
-        if z_actual <= cfg.UMBRAL_PANICO:
-            print(f"ALERTA: {symbol} | Z-Score: {z_actual:.2f} (POSIBLE COLAPSO)")
-            return symbol, z_actual
-            
-    except Exception as e:
-        pass
-        
-    return None, None
+async def cazar_anomalia_ws(exchange, symbol, callback=None):
+    """
+    Bucle reactivo con WebSockets (ccxt.pro).
+    Reemplaza la lógica REST y el Semaphore.
+    """
+    simulador = None
+    if cfg.MODO_PAPER:
+        simulador = importlib.import_module("0_simulador_pnl")
 
-async def main():
-    exchange = ccxt.bybit()
-    presas = await obtener_presas(exchange)
-    print(f"Radar fijado en: {presas}")
-    try:
-        while True:
-            await asyncio.gather(*(cazar_anomalia(exchange, p) for p in presas))
-            await asyncio.sleep(10)
-    finally:
-        await exchange.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    while True:
+        try:
+            # Bucle Reactivo: Espera activa sin REST
+            ticker = await exchange.watch_ticker(symbol)
+            last = ticker.get('last')
+            
+            if not last:
+                continue
+            
+            # 1. Enviar el precio al simulador si MODO_PAPER es True
+            if cfg.MODO_PAPER and simulador:
+                simulador.vigilar_posiciones_virtuales(symbol, last)
+                
+            # 2. Inyectar precio en la memoria O(1)
+            z_actual = calcular_z_score_incremental(symbol, last)
+            
+            # 3. Disparador
+            if z_actual <= cfg.UMBRAL_PANICO:
+                print(f"[WS] ALERTA: {symbol} | Z-Score: {z_actual:.2f} (POSIBLE COLAPSO)")
+                if callback:
+                    await callback(symbol, z_actual)
+                # Pausa temporal tras detectar caída para evitar flood de señales
+                await asyncio.sleep(60)
+                
+        except Exception as e:
+            # ccxt.pro maneja la reconexión, pero evitamos crashear el loop en errores inesperados
+            await asyncio.sleep(5)

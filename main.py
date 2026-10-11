@@ -1,98 +1,101 @@
 import asyncio
 import time
-import ccxt.async_support as ccxt
+import ccxt.pro as ccxt
 import importlib
 
-# Importar los tres cerebros (asegúrate de que los nombres de los archivos no tengan caracteres que rompan el import)
 radar = importlib.import_module("1_radar_volatilidad")
 escudo = importlib.import_module("2_escudo_semantico")
 sniper = importlib.import_module("3_ejecutor_sniper")
+cfg = importlib.import_module("config_parametros")
+
+btc_symbol = "BTC/USDT:USDT"
+bloqueo_hasta = 0
+
+async def procesar_anomalia(symbol, z_score):
+    """
+    Callback asíncrono disparado directamente por el Radar WebSocket
+    cuando encuentra una anomalía.
+    """
+    global bloqueo_hasta
+    ahora = time.time()
+    
+    # 1. GUARDIÁN DE CAOS SISTÉMICO (Si cae el Rey, caen todos)
+    if symbol == btc_symbol and z_score <= -4.0:
+        print(f"[CIRCUIT BREAKER GLOBAL] ¡BTC COLAPSÓ! Z-Score: {z_score:.2f}")
+        print("Bloqueo de compras activado por 30 minutos.")
+        bloqueo_hasta = ahora + (30 * 60)
+        return
+        
+    if symbol == btc_symbol:
+        return # No procesamos trades en BTC, solo lo usamos de termómetro global
+        
+    if ahora < bloqueo_hasta:
+        restante = int((bloqueo_hasta - ahora) / 60)
+        print(f"[BLOQUEO] Anomalía en {symbol} ignorada. Enfriamiento BTC activo: {restante} min.")
+        return
+        
+    # 2. ESCUDO SEMÁNTICO
+    print(f"\n[MAIN] Anomalía confirmada en {symbol}. Activando el Escudo Semántico...")
+    aprobado = await escudo.evaluar_moneda(symbol)
+    
+    # 3. FRANCOTIRADOR BIFURCADO
+    if aprobado:
+        print(f"[MAIN] Escudo dio LUZ VERDE. Disparando Francotirador para {symbol}...")
+        exito = await sniper.ejecutar_orden(symbol, z_score)
+        if exito:
+            print(f"[MAIN] ¡Operación procesada en {symbol}!")
+        else:
+            print(f"[MAIN] Francotirador abortó misión en {symbol}.")
+    else:
+        print(f"[MAIN] Operación denegada por el Escudo. Protegiendo capital.")
+
+async def guardian_latencia(exchange):
+    """
+    Monitorea el desfase temporal con el servidor en un hilo secundario.
+    """
+    while True:
+        try:
+            # Usar REST para la latencia base
+            server_time = await exchange.fetch_time()
+            local_time = int(time.time() * 1000)
+            latencia = abs(server_time - local_time)
+            if latencia > 2000:
+                print(f"[CIRCUIT BREAKER] Latencia INACEPTABLE ({latencia}ms). Riesgo alto en ejecuciones.")
+            elif latencia > 300:
+                print(f"[WARNING] Latencia alta ({latencia}ms). Flujo WS podría estar retrasado.")
+        except Exception:
+            pass
+        await asyncio.sleep(10)
 
 async def orquestador_principal():
     print("==================================================")
-    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (OPTIMIZADO V1.1)")
+    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (V2.0 - WEBSOCKETS & PAPER TRADING)")
     print("==================================================")
-    
+    if cfg.MODO_PAPER:
+        print("🟢 MODO PAPER TRADING: ACTIVADO (Las ejecuciones serán simuladas en SQLite)")
+    else:
+        print("🔴 MODO REAL: ACTIVADO (Dinero real en riesgo)")
+    print("==================================================")
+
+    # ccxt.pro para habilitar WebSockets puros
     exchange = ccxt.bybit()
-    bloqueo_hasta = 0  # Timestamp para el Circuit Breaker de BTC
     
-    # 1. SOLUCIÓN CORTO PLAZO: Estrangulamiento Asíncrono para evitar Baneos (429)
-    semaforo_api = asyncio.Semaphore(10)
-    
-    async def escaneo_seguro(simbolo):
-        async with semaforo_api:
-            return await radar.cazar_anomalia(exchange, simbolo)
-
     try:
-        while True:
-            ahora = time.time()
+        # Petición inicial para definir top monedas por volumen
+        presas = await radar.obtener_presas(exchange)
+        if btc_symbol not in presas:
+            presas.append(btc_symbol)
             
-            # 2. GUARDIÁN DE DESFASE TEMPORAL (Time Drift)
-            try:
-                server_time = await exchange.fetch_time()
-                local_time = int(time.time() * 1000)
-                latencia = abs(server_time - local_time)
-                if latencia > 2000:
-                    print(f"[CIRCUIT BREAKER] Latencia de red INACEPTABLE ({latencia}ms). Pausando motor...")
-                    await asyncio.sleep(5)
-                    continue
-                elif latencia > 300:
-                    print(f"[WARNING] Latencia alta ({latencia}ms). El motor sigue rodando pero hay riesgo de desfase.")
-            except Exception as e:
-                print(f"Error obteniendo hora del servidor: {e}")
-                await asyncio.sleep(5)
-                continue
+        print(f"\n[MAIN] Radar WebSockets fijado en {len(presas)} pares: {presas}")
+        print("[MAIN] Creando hilos reactivos independientes para cada par...")
+        
+        # Lanzar el guardián de latencia en background
+        asyncio.create_task(guardian_latencia(exchange))
+        
+        # Lanzar todos los flujos de WebSockets concurrentemente de forma perpetua
+        tareas_ws = [radar.cazar_anomalia_ws(exchange, p, procesar_anomalia) for p in presas]
+        await asyncio.gather(*tareas_ws)
 
-            # 3. GUARDIÁN DE CAOS SISTÉMICO (Enfriamiento por caída de BTC)
-            if ahora < bloqueo_hasta:
-                restante = int((bloqueo_hasta - ahora) / 60)
-                print(f"[SISTEMA BLOQUEADO] Cisne Negro detectado. Enfriamiento activo: {restante} min restantes.")
-                await asyncio.sleep(60) # Chequeamos cada minuto si ya pasó el castigo
-                continue
-
-            # RADAR: Buscar candidatos
-            presas = await radar.obtener_presas(exchange)
-            
-            # Obligamos a monitorear BTC siempre para nuestro Guardián Sistémico
-            btc_symbol = "BTC/USDT:USDT"
-            if btc_symbol not in presas:
-                presas.append(btc_symbol)
-
-            print(f"\n[MAIN] Radar escaneando {len(presas)} pares (Torniquete: 10 a la vez)...")
-            
-            # Ejecución concurrente estrangulada (Máximo 10 peticiones a la vez)
-            resultados = await asyncio.gather(*(escaneo_seguro(p) for p in presas))
-            
-            # Procesar los resultados del Radar
-            for symbol, z_score in resultados:
-                if symbol:
-                    # Validar Caos Sistémico (Si cae el Rey, caen todos)
-                    if symbol == btc_symbol and z_score <= -4.0:
-                        print(f"[CIRCUIT BREAKER GLOBAL] ¡BTC COLAPSÓ! Z-Score: {z_score:.2f}")
-                        print("Bloqueo de compras activado por 30 minutos.")
-                        bloqueo_hasta = time.time() + (30 * 60)
-                        break # Ignoramos cualquier otra altcoin en esta ronda
-                    
-                    if symbol == btc_symbol:
-                        continue # No disparamos a BTC, solo lo usamos de termómetro global
-                        
-                    # Se detectó una caída fuerte en Altcoin (y no hay Caos Sistémico)
-                    print(f"\n[MAIN] Anomalía confirmada en {symbol}. Activando el Escudo Semántico...")
-                    aprobado = await escudo.evaluar_moneda(symbol)
-                    
-                    if aprobado:
-                        print(f"[MAIN] Escudo dio LUZ VERDE. Disparando Francotirador para {symbol}...")
-                        exito = await sniper.ejecutar_orden(symbol, z_score)
-                        
-                        if exito:
-                            print(f"[MAIN] ¡Operación exitosa en {symbol}! Esperando desarrollo del mercado.")
-                        else:
-                            print(f"[MAIN] El Francotirador abortó la misión en {symbol} por problemas de ejecución/saldo.")
-                    else:
-                        print(f"[MAIN] Operación denegada por el Escudo. Protegiendo capital. Ignorando {symbol}.")
-            
-            await asyncio.sleep(10)
-            
     except asyncio.CancelledError:
         print("\n[MAIN] Apagando el bot de forma segura...")
     except Exception as e:
