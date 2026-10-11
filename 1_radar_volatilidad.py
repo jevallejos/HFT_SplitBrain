@@ -1,5 +1,12 @@
-import asyncio, ccxt.async_support as ccxt, pandas as pd
+import asyncio
+import collections
+import math
+import ccxt.async_support as ccxt
 import config_parametros as cfg
+
+# Estado Global en Memoria para cálculos incrementales (Destruyendo a Pandas)
+# Estructura: { "SYMBOL": {"precios": deque, "ema": float} }
+estado_memoria = {}
 
 async def obtener_presas(exchange):
     tickers = await exchange.fetch_tickers()
@@ -13,19 +20,57 @@ async def obtener_presas(exchange):
     presas.sort(key=lambda x: x[1], reverse=True)
     return [p[0] for p in presas[:cfg.TOP_N]]
 
+def calcular_z_score_incremental(symbol, precio_actual):
+    if symbol not in estado_memoria:
+        # Inicialización de la caché para este par
+        estado_memoria[symbol] = {
+            "precios": collections.deque(maxlen=cfg.VENTANA),
+            "ema": precio_actual
+        }
+    
+    estado = estado_memoria[symbol]
+    estado["precios"].append(precio_actual)
+    
+    # Cálculo Incremental de la EMA: EMA_hoy = Precio_hoy * K + EMA_ayer * (1 - K)
+    k = 2 / (cfg.VENTANA + 1)
+    estado["ema"] = (precio_actual * k) + (estado["ema"] * (1 - k))
+    
+    # Si no tenemos suficientes datos para la Desviación Estándar, no disparamos alertas falsas
+    n = len(estado["precios"])
+    if n < 2:
+        return 0.0
+
+    # Cálculo ultra-rápido de la Desviación Estándar de la muestra
+    media = sum(estado["precios"]) / n
+    varianza = sum((x - media) ** 2 for x in estado["precios"]) / (n - 1)
+    std = math.sqrt(varianza)
+    
+    if std == 0:
+        return 0.0
+        
+    z_score = (precio_actual - estado["ema"]) / std
+    return z_score
+
 async def cazar_anomalia(exchange, symbol):
     try:
-        ohlcv = await exchange.fetch_ohlcv(symbol, cfg.TIMEFRAME, limit=100)
-        df = pd.DataFrame(ohlcv, columns=['t','open','high','low','close','v'])
-        df['EMA'] = df['close'].ewm(span=cfg.VENTANA, adjust=False).mean()
-        df['STD'] = df['close'].rolling(window=cfg.VENTANA).std()
-        df['Z-Score'] = (df['close'] - df['EMA']) / df['STD']
-        z_actual = df['Z-Score'].iloc[-1]
+        # Petición ultra ligera: Solo traemos la ÚLTIMA vela en lugar de 100
+        # Esto reduce el payload JSON y acelera la red
+        ohlcv = await exchange.fetch_ohlcv(symbol, cfg.TIMEFRAME, limit=1)
+        if not ohlcv:
+            return None, None
+            
+        precio_cierre = ohlcv[0][4] # Índice 4 es el precio de cierre ('close')
+        
+        # Matemáticas Vectorizadas en Microsegundos (O(1))
+        z_actual = calcular_z_score_incremental(symbol, precio_cierre)
+        
         if z_actual <= cfg.UMBRAL_PANICO:
             print(f"ALERTA: {symbol} | Z-Score: {z_actual:.2f} (POSIBLE COLAPSO)")
             return symbol, z_actual
-    except:
+            
+    except Exception as e:
         pass
+        
     return None, None
 
 async def main():

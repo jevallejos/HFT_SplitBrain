@@ -1,4 +1,5 @@
 import asyncio
+import time
 import ccxt.async_support as ccxt
 import importlib
 
@@ -9,31 +10,75 @@ sniper = importlib.import_module("3_ejecutor_sniper")
 
 async def orquestador_principal():
     print("==================================================")
-    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT")
+    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (OPTIMIZADO V1.1)")
     print("==================================================")
     
     exchange = ccxt.bybit()
+    bloqueo_hasta = 0  # Timestamp para el Circuit Breaker de BTC
     
+    # 1. SOLUCIÓN CORTO PLAZO: Estrangulamiento Asíncrono para evitar Baneos (429)
+    semaforo_api = asyncio.Semaphore(10)
+    
+    async def escaneo_seguro(simbolo):
+        async with semaforo_api:
+            return await radar.cazar_anomalia(exchange, simbolo)
+
     try:
         while True:
-            # 1. RADAR: Buscar candidatos con alta volatilidad
-            presas = await radar.obtener_presas(exchange)
-            print(f"\n[MAIN] Radar escaneando {len(presas)} pares...")
+            ahora = time.time()
             
-            # Cazar anomalías en paralelo
-            resultados = await asyncio.gather(*(radar.cazar_anomalia(exchange, p) for p in presas))
+            # 2. GUARDIÁN DE DESFASE TEMPORAL (Time Drift)
+            try:
+                server_time = await exchange.fetch_time()
+                local_time = int(time.time() * 1000)
+                latencia = abs(server_time - local_time)
+                if latencia > 300:
+                    print(f"⚠️ [CIRCUIT BREAKER] Latencia de red extrema ({latencia}ms). Pausando motor...")
+                    await asyncio.sleep(5)
+                    continue
+            except Exception as e:
+                print(f"⚠️ Error obteniendo hora del servidor: {e}")
+                await asyncio.sleep(5)
+                continue
+
+            # 3. GUARDIÁN DE CAOS SISTÉMICO (Enfriamiento por caída de BTC)
+            if ahora < bloqueo_hasta:
+                restante = int((bloqueo_hasta - ahora) / 60)
+                print(f"🛑 [SISTEMA BLOQUEADO] Cisne Negro detectado. Enfriamiento activo: {restante} min restantes.")
+                await asyncio.sleep(60) # Chequeamos cada minuto si ya pasó el castigo
+                continue
+
+            # RADAR: Buscar candidatos
+            presas = await radar.obtener_presas(exchange)
+            
+            # Obligamos a monitorear BTC siempre para nuestro Guardián Sistémico
+            btc_symbol = "BTC/USDT:USDT"
+            if btc_symbol not in presas:
+                presas.append(btc_symbol)
+
+            print(f"\n[MAIN] Radar escaneando {len(presas)} pares (Torniquete: 10 a la vez)...")
+            
+            # Ejecución concurrente estrangulada (Máximo 10 peticiones a la vez)
+            resultados = await asyncio.gather(*(escaneo_seguro(p) for p in presas))
             
             # Procesar los resultados del Radar
             for symbol, z_score in resultados:
                 if symbol:
-                    # Se detectó una caída fuerte (Z-Score crítico)
-                    print(f"\n[MAIN] Anomalía confirmada en {symbol}. Activando el Escudo Semántico...")
+                    # Validar Caos Sistémico (Si cae el Rey, caen todos)
+                    if symbol == btc_symbol and z_score <= -4.0:
+                        print(f"🚨🚨 [CIRCUIT BREAKER GLOBAL] ¡BTC COLAPSÓ! Z-Score: {z_score:.2f}")
+                        print("🚨🚨 Bloqueo de compras activado por 30 minutos.")
+                        bloqueo_hasta = time.time() + (30 * 60)
+                        break # Ignoramos cualquier otra altcoin en esta ronda
                     
-                    # 2. ESCUDO: Evaluar el riesgo con IA
+                    if symbol == btc_symbol:
+                        continue # No disparamos a BTC, solo lo usamos de termómetro global
+                        
+                    # Se detectó una caída fuerte en Altcoin (y no hay Caos Sistémico)
+                    print(f"\n[MAIN] Anomalía confirmada en {symbol}. Activando el Escudo Semántico...")
                     aprobado = await escudo.evaluar_moneda(symbol)
                     
                     if aprobado:
-                        # 3. FRANCOTIRADOR: Ejecutar orden de compra
                         print(f"[MAIN] Escudo dio LUZ VERDE. Disparando Francotirador para {symbol}...")
                         exito = await sniper.ejecutar_orden(symbol, z_score)
                         
@@ -44,7 +89,6 @@ async def orquestador_principal():
                     else:
                         print(f"[MAIN] Operación denegada por el Escudo. Protegiendo capital. Ignorando {symbol}.")
             
-            # Esperar antes del siguiente ciclo de escaneo
             await asyncio.sleep(10)
             
     except asyncio.CancelledError:
