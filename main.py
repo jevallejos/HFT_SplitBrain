@@ -24,6 +24,7 @@ sys.stdout = Logger()
 radar = importlib.import_module("1_radar_volatilidad")
 escudo = importlib.import_module("2_escudo_semantico")
 sniper = importlib.import_module("3_ejecutor_sniper")
+telemetria = importlib.import_module("4_telemetria_telegram")
 cfg = importlib.import_module("config_parametros")
 
 btc_symbol = "BTC/USDT:USDT"
@@ -39,8 +40,9 @@ async def procesar_anomalia(symbol, z_score):
     
     # 1. GUARDIÁN DE CAOS SISTÉMICO (Si cae el Rey, caen todos)
     if symbol == btc_symbol and z_score <= -4.0:
-        print(f"[CIRCUIT BREAKER GLOBAL] ¡BTC COLAPSÓ! Z-Score: {z_score:.2f}")
-        print("Bloqueo de compras activado por 30 minutos.")
+        msg = f"🔴 [CIRCUIT BREAKER GLOBAL]\n¡BTC COLAPSÓ! Z-Score: {z_score:.2f}\nBloqueo de compras activado por 30 minutos."
+        print(msg.replace('<b>', '').replace('</b>', ''))
+        asyncio.create_task(telemetria.enviar_alerta(msg))
         bloqueo_hasta = ahora + (30 * 60)
         return
         
@@ -61,7 +63,9 @@ async def procesar_anomalia(symbol, z_score):
         print(f"[MAIN] Escudo dio LUZ VERDE. Disparando Francotirador para {symbol}...")
         exito = await sniper.ejecutar_orden(symbol, z_score)
         if exito:
+            msg = f"🟢 [TRADE EJECUTADO]\nMisión cumplida en {symbol} (Z-Score: {z_score:.2f})."
             print(f"[MAIN] ¡Operación procesada en {symbol}!")
+            asyncio.create_task(telemetria.enviar_alerta(msg))
         else:
             print(f"[MAIN] Francotirador abortó misión en {symbol}.")
     else:
@@ -87,13 +91,17 @@ async def guardian_latencia(exchange):
 
 async def orquestador_principal():
     print("==================================================")
-    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (V2.0 - WEBSOCKETS & PAPER TRADING)")
+    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (V3.0 - GROQ & TELEGRAM)")
     print("==================================================")
     if cfg.MODO_PAPER:
         print("🟢 MODO PAPER TRADING: ACTIVADO (Las ejecuciones serán simuladas en SQLite)")
+        modo = "PAPER TRADING"
     else:
         print("🔴 MODO REAL: ACTIVADO (Dinero real en riesgo)")
+        modo = "REAL"
     print("==================================================")
+    
+    asyncio.create_task(telemetria.enviar_alerta("🚀 Motor HFT INICIADO (Modo Local)."))
 
     # ccxt.pro para habilitar WebSockets puros
     exchange = ccxt.bybit()

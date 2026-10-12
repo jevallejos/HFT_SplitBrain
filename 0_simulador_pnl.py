@@ -47,7 +47,14 @@ def abrir_posicion_virtual(symbol: str, price: float, side: str = 'buy'):
         'tp': tp_price,
         'time': int(time.time() * 1000)
     }
-    print(f"[PAPER] 🟢 Posición ABIERTA: {symbol} | Side: {side} | Entry: {precio_ejecucion:.4f}")
+    msg = f"[PAPER] 🟢 Posición ABIERTA: {symbol} | Side: {side} | Entry: {precio_ejecucion:.4f}"
+    print(msg)
+    
+    # Importar aquí para evitar referencias circulares si las hay
+    import importlib
+    import asyncio
+    telemetria = importlib.import_module("4_telemetria_telegram")
+    asyncio.create_task(telemetria.enviar_alerta(f"🟢 <b>[PAPER TRADE]</b>\n{msg}"))
 
 def guardar_historial_db(symbol, side, entry, exit_price, pnl, timestamp):
     conn = sqlite3.connect(DB_NAME)

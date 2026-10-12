@@ -4,9 +4,11 @@ Bot de Trading Institucional de Alta Frecuencia (HFT) especializado en cazar ano
 
 El sistema utiliza una arquitectura "Split-Brain" asíncrona, disociando las tareas de rastreo de red, validación semántica mediante LLM (Gemini) y ejecución final a través de Bybit.
 
-## 🚀 Arquitectura V2.0
+## 🚀 Arquitectura V3.0
 
-La versión 2.0 actualiza el proyecto a un nivel completamente interactivo y HFT genuino:
+La versión 3.0 evoluciona el proyecto para máxima velocidad y control remoto:
+- **Motor LLM Groq (Llama 3):** Se migró el Escudo Semántico desde Gemini hacia Groq API. Esto soluciona los cuellos de botella (errores 503) y ofrece latencias de milisegundos en la validación, crucial para HFT.
+- **Sistema de Alertas Telegram:** Notificaciones push en tiempo real para eventos críticos. El bot avisa directamente a tu celular cuando inicia, ejecuta un trade o dispara el Circuit Breaker global.
 - **Radar de Volatilidad (WebSockets):** Utiliza `ccxt.pro` para monitorear constantemente los ticks en tiempo real de los pares con mayor liquidez. Cálculos matemáticos incrementales O(1) sin depender de estructuras pasadas (Pandas) garantizando cero retardo.
 - **Circuit Breakers (Guardián Sistémico):** Monitoreo global de BTC. Si Bitcoin colapsa (Z-Score < -4.0), las operaciones en Altcoins se congelan globalmente durante 30 minutos para evitar ser liquidado por un flash-crash macroeconómico.
 - **Guardián de Time Drift:** Análisis continuo de la latencia para prever desfases de tiempo.
