@@ -55,21 +55,32 @@ async def ejecutar_orden(symbol: str, z_score: float):
             simulador.abrir_posicion_virtual(symbol, precio_actual, 'buy')
             return True
         else:
-            print(f"FRANCOTIRADOR [REAL]: Disparando orden Market BUY -> {cantidad} {symbol} a {precio_actual}")
+            print(f"FRANCOTIRADOR [REAL]: Disparando orden LIMIT (PostOnly) BUY -> {cantidad} {symbol} a {precio_actual}")
             print(f"FRANCOTIRADOR [REAL]: Stop-Loss: {stop_loss_price:.4f} | Take-Profit: {take_profit_price:.4f}")
             
-            orden = await exchange.create_order(
-                symbol=symbol,
-                type='market',
-                side='buy',
-                amount=cantidad,
-                params={
-                    'stopLoss': stop_loss_price,
-                    'takeProfit': take_profit_price
-                }
-            )
-            print(f"FRANCOTIRADOR [REAL]: ¡Blanco abatido! Orden ejecutada. ID: {orden['id']}")
-            return True
+            telemetria = importlib.import_module("4_telemetria_telegram")
+            enviar_alerta = telemetria.enviar_alerta
+            
+            try:
+                orden = await exchange.create_order(
+                    symbol=symbol,
+                    type='limit',
+                    side='buy',
+                    amount=cantidad,
+                    price=precio_actual,
+                    params={
+                        'timeInForce': 'PostOnly',
+                        'stopLoss': stop_loss_price,
+                        'takeProfit': take_profit_price
+                    }
+                )
+                print(f"FRANCOTIRADOR [REAL]: ¡Blanco abatido! Orden ejecutada. ID: {orden['id']}")
+                asyncio.create_task(enviar_alerta(f"🟩 ALERTA VERDE (PROD):\nOrden Limit PostOnly creada en {symbol}\nPrecio: {precio_actual}\nID: {orden['id']}"))
+                return True
+            except Exception as e:
+                print(f"FRANCOTIRADOR [ERROR REAL]: {e}")
+                asyncio.create_task(enviar_alerta(f"🚨 ERROR EJECUTANDO ORDEN REAL en {symbol}:\n{e}"))
+                return False
 
     except Exception as e:
         print(f"FRANCOTIRADOR: Arma encasquillada (Error): {e}")
