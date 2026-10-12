@@ -4,16 +4,14 @@ Bot de Trading Institucional de Alta Frecuencia (HFT) especializado en cazar ano
 
 El sistema utiliza una arquitectura "Split-Brain" asíncrona, disociando las tareas de rastreo de red, validación semántica mediante LLM (Gemini) y ejecución final a través de Bybit.
 
-## 🚀 Arquitectura V3.0
+## 🚀 Arquitectura V4.0 (Fuego Real)
 
-La versión 3.0 evoluciona el proyecto para máxima velocidad y control remoto:
-- **Motor LLM Groq (Llama 3):** Se migró el Escudo Semántico desde Gemini hacia Groq API. Esto soluciona los cuellos de botella (errores 503) y ofrece latencias de milisegundos en la validación, crucial para HFT.
-- **Sistema de Alertas Telegram:** Notificaciones push en tiempo real para eventos críticos. El bot avisa directamente a tu celular cuando inicia, ejecuta un trade o dispara el Circuit Breaker global.
-- **Radar de Volatilidad (WebSockets):** Utiliza `ccxt.pro` para monitorear constantemente los ticks en tiempo real de los pares con mayor liquidez. Cálculos matemáticos incrementales O(1) sin depender de estructuras pasadas (Pandas) garantizando cero retardo.
-- **Circuit Breakers (Guardián Sistémico):** Monitoreo global de BTC. Si Bitcoin colapsa (Z-Score < -4.0), las operaciones en Altcoins se congelan globalmente durante 30 minutos para evitar ser liquidado por un flash-crash macroeconómico.
-- **Guardián de Time Drift:** Análisis continuo de la latencia para prever desfases de tiempo.
-- **Escudo Semántico Paralelo (Gemini):** Evaluación On-Demand a través de Gemini 3.8 Flash para validar la moneda (evitar tokens envueltos en fraudes o rugs).
-- **Simulador PNL (Paper Trading):** Operativa virtual que simula la ejecución en la bolsa interceptando al ejecutor. Incorpora validación O(1) de TP/SL en memoria y lo registra en una base local `sqlite3` para el backtesting en vivo.
+La versión 4.0 marca el salto a Producción (Mainnet):
+- **Ejecución Límite Institucional (PostOnly):** El bot ha desactivado el simulador en RAM (`MODO_PAPER = False`) y ahora dispara órdenes estrictamente *Maker* (Limit PostOnly) en Bybit. Esto elimina los riesgos de slippage (deslizamiento) y garantiza el cobro (rebates) de comisiones.
+- **Motor LLM Groq:** El Escudo Semántico utiliza Llama 3 / GPT-OSS en Groq API. Esto soluciona cuellos de botella y ofrece latencias de validación HFT en tiempo real.
+- **Sistema de Alertas Telegram Asíncrono:** Notificaciones push inmediatas y no bloqueantes de cada orden colocada o error crítico.
+- **Radar de Volatilidad (WebSockets):** Utiliza `ccxt.pro` para monitorear los ticks de los pares líquidos con cálculos O(1).
+- **Circuit Breakers (Guardián Sistémico):** Monitoreo global de BTC con congelamiento automático por caídas severas.
 
 ## 📦 Estructura del Proyecto
 - `main.py`: Orquestador principal que levanta la red neuronal de WebSockets y administra los Callbacks.
@@ -31,15 +29,23 @@ git clone https://github.com/jevallejos/HFT_SplitBrain.git
 cd HFT_SplitBrain
 python -m venv venv
 .\venv\Scripts\activate
-pip install ccxt google-genai python-dotenv
+pip install -r requirements.txt
 ```
 
 ### 2. Configurar el Entorno (Llaves API)
 Debes crear un archivo `.env` en la raíz del proyecto y rellenarlo con tus credenciales:
 ```env
-GEMINI_API_KEY=tu_api_key_de_gemini
+# Intercambio
 BYBIT_API_KEY=tu_api_key_de_bybit
 BYBIT_API_SECRET=tu_api_secret_de_bybit
+
+# Modelos LLM
+GEMINI_API_KEY=tu_api_key_de_gemini
+GROQ_API_KEY=tu_api_key_de_groq
+
+# Telemetría
+TELEGRAM_TOKEN=tu_token_bot_telegram
+TELEGRAM_CHAT_ID=tu_chat_id
 ```
 
 ### 3. Ejecutar el orquestador
@@ -47,7 +53,7 @@ BYBIT_API_SECRET=tu_api_secret_de_bybit
 python main.py
 ```
 
-Por defecto, la ejecución arrancará en `MODO_PAPER = True` (simulación activada). Si deseas arriesgar dinero real, ajusta la constante dentro de `config_parametros.py`.
+Por defecto, la versión 4.0 opera en **Fuego Real** (`MODO_PAPER = False`). Si deseas volver a simular operaciones sin riesgo, ajusta la constante dentro de `config_parametros.py`.
 
 ---
 ⚠️ *El uso en modo real implica un alto riesgo financiero. Se recomienda probar extensamente el Paper Trading antes de realizar transacciones en mainnet.*
