@@ -18,6 +18,6 @@ TOP_N = 5
 PROHIBIDAS = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'USDC/USDT:USDT', 'USDE/USDT:USDT']
 
 # Parámetros Paper Trading & Riesgo
-MODO_PAPER = True
+MODO_PAPER = False
 SL_PCT = 0.03
 TP_PCT = 0.05
