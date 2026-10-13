@@ -70,6 +70,12 @@ async def cazar_anomalia_ws(exchange, symbol, callback=None):
             
             if not last:
                 continue
+                
+            # Extracción O(1) de volúmenes para Order Flow Imbalance
+            vol_bid = ticker.get('bidVolume') or 0
+            vol_ask = ticker.get('askVolume') or 0
+            total_vol = vol_bid + vol_ask
+            ofi = (vol_bid - vol_ask) / total_vol if total_vol > 0 else 0
             
             # 1. Enviar el precio al simulador si MODO_PAPER es True
             if cfg.MODO_PAPER and simulador:
@@ -78,13 +84,17 @@ async def cazar_anomalia_ws(exchange, symbol, callback=None):
             # 2. Inyectar precio en la memoria O(1)
             z_actual = calcular_z_score_incremental(symbol, last)
             
-            # 3. Disparador
+            # 3. Disparador Táctico con Filtro Cuántico de Microestructura (OFI)
             if z_actual <= cfg.UMBRAL_PANICO:
-                print(f"[WS] ALERTA: {symbol} | Z-Score: {z_actual:.2f} (POSIBLE COLAPSO)")
-                if callback:
-                    await callback(symbol, z_actual)
-                # Pausa temporal tras detectar caída para evitar flood de señales
-                await asyncio.sleep(60)
+                if ofi < cfg.UMBRAL_OFI_TOXICO:
+                    print(f"⚠️ [MICROESTRUCTURA] {symbol} (Z-Score: {z_actual:.2f}). Flujo TÓXICO detectado (OFI: {ofi:.2f}). Abortando caída de cuchillo.")
+                    continue
+                else:
+                    print(f"🚨 [WS] ALERTA: {symbol} | Z-Score: {z_actual:.2f} | OFI: {ofi:.2f} (MICROESTRUCTURA SANA)")
+                    if callback:
+                        await callback(symbol, z_actual)
+                    # Pausa temporal tras detectar caída para evitar flood de señales
+                    await asyncio.sleep(60)
                 
         except Exception as e:
             # ccxt.pro maneja la reconexión, pero evitamos crashear el loop en errores inesperados

@@ -18,6 +18,9 @@ TOP_N = 5
 PROHIBIDAS = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'USDC/USDT:USDT', 'USDE/USDT:USDT']
 
 # Parámetros Paper Trading & Riesgo
-MODO_PAPER = False
+MODO_PAPER = True
 SL_PCT = 0.03
 TP_PCT = 0.05
+
+# Filtro de Microestructura (Order Flow Imbalance)
+UMBRAL_OFI_TOXICO = -0.5  # Si el ratio es menor a esto, la presión vendedora es letal (Tóxico).
