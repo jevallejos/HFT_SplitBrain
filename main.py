@@ -91,7 +91,7 @@ async def guardian_latencia(exchange):
 
 async def orquestador_principal():
     print("==================================================")
-    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (V3.0 - GROQ & TELEGRAM)")
+    print("INICIANDO CEREBRO CENTRAL SPLIT-BRAIN HFT (V5.0 - ARQUITECTURA CUÁNTICA OFI)")
     print("==================================================")
     if cfg.MODO_PAPER:
         print("🟢 MODO PAPER TRADING: ACTIVADO (Las ejecuciones serán simuladas en SQLite)")
